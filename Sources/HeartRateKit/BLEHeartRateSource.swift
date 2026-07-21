@@ -69,6 +69,14 @@ public final class BLEHeartRateSource: NSObject, HeartRateSource, ObservableObje
         connect(peripheral)
     }
 
+    /// Forget the remembered strap and disconnect, so the next start() scans
+    /// fresh instead of reconnecting the old device.
+    public func forgetDevice() {
+        preferredPeripheralID = nil
+        stop()
+        discovered.removeAll()
+    }
+
     private func attemptStart() {
         guard central.state == .poweredOn, wantsConnection else { return }
         if connected != nil || connectingPeripheral != nil { return }
