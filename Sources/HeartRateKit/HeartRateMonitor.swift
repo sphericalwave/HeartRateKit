@@ -118,6 +118,11 @@ public final class HeartRateMonitor: ObservableObject {
 
     public func beginSet() { recorder.beginSession() }
 
+    /// Samples captured so far in the current set, with absolute timestamps.
+    /// Lets a host persist incrementally mid-set instead of waiting for
+    /// `endSet()` — so readings survive the app being killed part-way through.
+    public var sessionSamples: [(t: Date, bpm: Int)] { recorder.sessionSamples }
+
     /// Stats plus the raw samples for the set just finished, `t` relative to
     /// the first reading. Nil when no samples arrived.
     public func endSet() -> (stats: HRRecorder.SessionStats, samples: [(t: TimeInterval, bpm: Int)])? {
