@@ -62,6 +62,13 @@ public final class BLEHeartRateSource: NSObject, HeartRateSource, ObservableObje
         connectingPeripheral = nil
     }
 
+    /// Stop discovery while leaving any live connection intact. `stop()` by
+    /// contrast tears the connection down as well.
+    public func stopScanning() {
+        guard central.state == .poweredOn else { return }
+        central.stopScan()
+    }
+
     public func select(_ peripheral: CBPeripheral) {
         preferredPeripheralID = peripheral.identifier
         wantsConnection = true
