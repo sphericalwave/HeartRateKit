@@ -133,3 +133,19 @@ public struct HRConnectSheet: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("HRPill") {
+    HRPill(monitor: .preview())
+        .padding()
+}
+
+#Preview("LiveBPMLabel") {
+    LiveBPMLabel(monitor: .preview())
+        .padding()
+}
+
+#Preview("HRConnectSheet") {
+    HRConnectSheet(monitor: .preview())
+}
+#endif

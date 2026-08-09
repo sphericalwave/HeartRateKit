@@ -131,3 +131,19 @@ public final class HeartRateMonitor: ObservableObject {
         return (stats, raw.map { (t: $0.t.timeIntervalSince(first), bpm: $0.bpm) })
     }
 }
+
+#if DEBUG
+extension HeartRateMonitor {
+    /// A monitor seeded with fixed values for previews/screenshots — no live
+    /// BLE. Defined here (not in an extension file) so it can assign the
+    /// file-private `private(set)` published properties.
+    static func preview(bpm seededBpm: Int? = 132,
+                        state seededState: ConnectionState = .connected(name: "Polar H10")) -> HeartRateMonitor {
+        let monitor = HeartRateMonitor()
+        monitor.bpm = seededBpm
+        monitor.state = seededState
+        monitor.recent = HeartRateKitSamples.recent
+        return monitor
+    }
+}
+#endif
