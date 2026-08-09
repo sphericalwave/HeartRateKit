@@ -3,6 +3,17 @@
 Heart rate sourcing (BLE strap, HealthKit, watchOS companion) unified behind one
 observable facade, plus ready-made SwiftUI display components.
 
+## Components
+
+<!-- SCREENSHOTS:START -->
+| Component | Preview |
+| --- | --- |
+| `CompactHRChart` | ![CompactHRChart](Docs/img/compact-hr-chart.png) |
+| `HRConnectSheet` | ![HRConnectSheet](Docs/img/hr-connect-sheet.png) |
+| `HRPill` | ![HRPill](Docs/img/hr-pill.png) |
+| `LiveBPMLabel` | ![LiveBPMLabel](Docs/img/live-bpm-label.png) |
+<!-- SCREENSHOTS:END -->
+
 ## Requirements
 
 - iOS 16+ / macOS 14+ / watchOS 10+

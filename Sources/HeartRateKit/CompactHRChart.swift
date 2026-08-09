@@ -58,3 +58,10 @@ public struct CompactHRChart: View {
         return max(0, lo - 5)...(hi + 5)
     }
 }
+
+#if DEBUG
+#Preview("CompactHRChart") {
+    CompactHRChart(recent: HeartRateKitSamples.recent)
+        .padding()
+}
+#endif
