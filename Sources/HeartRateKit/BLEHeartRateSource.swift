@@ -10,19 +10,34 @@
 import Foundation
 import CoreBluetooth
 import Combine
+import HeartRateCore
 
 private let heartRateServiceUUID = CBUUID(string: "180D")
 private let heartRateMeasurementCharUUID = CBUUID(string: "2A37")
 
-public final class BLEHeartRateSource: NSObject, HeartRateSource, ObservableObject {
+/// A peripheral seen while scanning, with the signal strength needed to
+/// identify a strap in a crowded gym. Live bpm is not available pre-connect —
+/// the HR measurement characteristic only notifies after connection.
+public struct HRDiscovery: Identifiable, Sendable, Hashable {
+    public let id: UUID
+    public let name: String?
+    public let rssi: Int
+    public let lastSeen: Date
+}
+
+public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, ObservableObject {
 
     @Published public private(set) var discovered: [CBPeripheral] = []
+    @Published public private(set) var discoveries: [HRDiscovery] = []
     @Published public private(set) var connected: CBPeripheral?
     @Published public private(set) var state: CBManagerState = .unknown
 
     private var central: CBCentralManager!
     private var continuation: AsyncStream<Int>.Continuation?
     public let samples: AsyncStream<Int>
+    private var detailedContinuation: AsyncStream<HeartRateSample>.Continuation?
+    public let detailedSamples: AsyncStream<HeartRateSample>
+    private let startUptime = Date()
 
     private var wantsConnection = false
     private var connectingPeripheral: CBPeripheral?
@@ -38,8 +53,11 @@ public final class BLEHeartRateSource: NSObject, HeartRateSource, ObservableObje
     public override init() {
         var localCont: AsyncStream<Int>.Continuation!
         self.samples = AsyncStream { localCont = $0 }
+        var localDetailedCont: AsyncStream<HeartRateSample>.Continuation!
+        self.detailedSamples = AsyncStream { localDetailedCont = $0 }
         super.init()
         self.continuation = localCont
+        self.detailedContinuation = localDetailedCont
         self.central = CBCentralManager(delegate: self, queue: .main)
     }
 
@@ -82,6 +100,7 @@ public final class BLEHeartRateSource: NSObject, HeartRateSource, ObservableObje
         preferredPeripheralID = nil
         stop()
         discovered.removeAll()
+        discoveries.removeAll()
     }
 
     private func attemptStart() {
@@ -117,6 +136,12 @@ extension BLEHeartRateSource: CBCentralManagerDelegate {
                         rssi RSSI: NSNumber) {
         if !discovered.contains(where: { $0.identifier == peripheral.identifier }) {
             discovered.append(peripheral)
+        }
+        let seenAt = Date()
+        if let index = discoveries.firstIndex(where: { $0.id == peripheral.identifier }) {
+            discoveries[index] = HRDiscovery(id: peripheral.identifier, name: peripheral.name, rssi: RSSI.intValue, lastSeen: seenAt)
+        } else {
+            discoveries.append(HRDiscovery(id: peripheral.identifier, name: peripheral.name, rssi: RSSI.intValue, lastSeen: seenAt))
         }
         guard wantsConnection, connected == nil, connectingPeripheral == nil else { return }
         if preferredPeripheralID == nil || preferredPeripheralID == peripheral.identifier {
@@ -175,6 +200,9 @@ extension BLEHeartRateSource: CBPeripheralDelegate {
               let data = characteristic.value, !data.isEmpty else { return }
         let bpm = parseHeartRate(data)
         continuation?.yield(bpm)
+        if let sample = HeartRateMeasurementParser.parse(data, uptime: Date().timeIntervalSince(startUptime)) {
+            detailedContinuation?.yield(sample)
+        }
     }
 
     private func parseHeartRate(_ data: Data) -> Int {
