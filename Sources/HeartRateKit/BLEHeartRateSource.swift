@@ -40,6 +40,7 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
     private let startUptime = Date()
 
     private var wantsConnection = false
+    private var wantsScan = false
     private var connectingPeripheral: CBPeripheral?
 
     private var preferredPeripheralID: UUID? {
@@ -80,9 +81,20 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
         connectingPeripheral = nil
     }
 
+    /// Discover nearby straps without auto-connecting to any of them, so the
+    /// user can pick theirs (by name / RSSI) from `discoveries` and `select` it.
+    /// Unlike `start()`, this never connects to the first strap it hears.
+    public func scan() {
+        wantsScan = true
+        guard central.state == .poweredOn else { return }
+        central.scanForPeripherals(withServices: [heartRateServiceUUID],
+                                   options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+    }
+
     /// Stop discovery while leaving any live connection intact. `stop()` by
     /// contrast tears the connection down as well.
     public func stopScanning() {
+        wantsScan = false
         guard central.state == .poweredOn else { return }
         central.stopScan()
     }
@@ -116,6 +128,7 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
     }
 
     private func connect(_ p: CBPeripheral) {
+        wantsScan = false
         central.stopScan()
         p.delegate = self
         central.connect(p, options: nil)
@@ -126,6 +139,7 @@ extension BLEHeartRateSource: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         state = central.state
         if central.state == .poweredOn {
+            if wantsScan && !wantsConnection { scan() }
             attemptStart()
         }
     }
