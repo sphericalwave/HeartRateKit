@@ -51,6 +51,10 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: "ble.preferredPeripheralID") }
     }
 
+    /// True once a strap has been selected, so `start()` reconnects it rather
+    /// than connecting to whichever strap it hears first.
+    public var hasRememberedDevice: Bool { preferredPeripheralID != nil }
+
     public override init() {
         var localCont: AsyncStream<Int>.Continuation!
         self.samples = AsyncStream { localCont = $0 }
@@ -83,7 +87,8 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
 
     /// Discover nearby straps without auto-connecting to any of them, so the
     /// user can pick theirs (by name / RSSI) from `discoveries` and `select` it.
-    /// Unlike `start()`, this never connects to the first strap it hears.
+    /// Unlike `start()`, this never connects to the first strap it hears, and
+    /// auto-connect stays off until `stopScanning()` or `select(_:)`.
     public func scan() {
         wantsScan = true
         guard central.state == .poweredOn else { return }
@@ -157,7 +162,7 @@ extension BLEHeartRateSource: CBCentralManagerDelegate {
         } else {
             discoveries.append(HRDiscovery(id: peripheral.identifier, name: peripheral.name, rssi: RSSI.intValue, lastSeen: seenAt))
         }
-        guard wantsConnection, connected == nil, connectingPeripheral == nil else { return }
+        guard wantsConnection, !wantsScan, connected == nil, connectingPeripheral == nil else { return }
         if preferredPeripheralID == nil || preferredPeripheralID == peripheral.identifier {
             if preferredPeripheralID == nil {
                 preferredPeripheralID = peripheral.identifier
