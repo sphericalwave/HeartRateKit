@@ -16,6 +16,12 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
 
     @Published public private(set) var latestBpm: Int?
     @Published public private(set) var isStreaming = false
+    /// Why the last start attempt failed, for a host to show. A watch has no
+    /// console to read, so swallowing this left "Idle" as the only symptom.
+    @Published public private(set) var lastError: String?
+    /// Whether HealthKit has granted heart-rate reads. A workout session
+    /// starts happily without it and then reports no samples at all.
+    @Published public private(set) var isAuthorized = false
 
     private let store = HKHealthStore()
     private var workoutSession: HKWorkoutSession?
@@ -24,10 +30,25 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
 
     public override init() { super.init() }
 
-    public func requestAuthorization() async {
-        guard HKHealthStore.isHealthDataAvailable() else { return }
+    @discardableResult
+    public func requestAuthorization() async -> Bool {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            lastError = "No health data on this device"
+            return false
+        }
         let hr = HKQuantityType(.heartRate)
-        try? await store.requestAuthorization(toShare: [], read: [hr])
+        do {
+            try await store.requestAuthorization(toShare: [], read: [hr])
+            // A read grant is deliberately not reported by authorizationStatus
+            // (it would leak what the user hid), so the request completing
+            // without error is as much as can be known before samples arrive.
+            isAuthorized = true
+            return true
+        } catch {
+            lastError = "Health permission failed: \(error.localizedDescription)"
+            isAuthorized = false
+            return false
+        }
     }
 
     public func setResolution(_ r: HRResolution) {
@@ -50,8 +71,9 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
             session.startActivity(with: now)
             builder.beginCollection(withStart: now) { _, _ in }
             isStreaming = true
+            lastError = nil
         } catch {
-            print("WatchHRStreamer start failed: \(error)")
+            lastError = "Workout start failed: \(error.localizedDescription)"
         }
     }
 
