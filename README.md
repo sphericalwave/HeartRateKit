@@ -31,7 +31,7 @@ observable facade, plus ready-made SwiftUI display components.
 - `BLEHeartRateSource` — CoreBluetooth strap source
 - `HealthKitHeartRateSource` — HealthKit-backed source
 - `WatchHeartRateSource` / `WatchHRStreamer` / `WatchHRShared` — watchOS companion streaming (`WCSession`)
-- `HeartRateMonitor` — app-facing facade over a source + `HRRecorder`: live BPM, connection state, discovered devices
+- `HeartRateMonitor` — app-facing facade over a source + `HRRecorder`: live BPM, connection state, discovered devices. `use(.ble)` / `use(.watch)` swaps which source feeds it; everything downstream reads the same either way. `setWatchResolution(_:)` sets the watch's forwarding density.
 - `HRRecorder` — records a BPM stream for later analysis
 - `HRResolution` / `HRThrottle` — sampling resolution and throttling for streamed data
 - `CompactHRChart`, `HRPill`, `LiveBPMLabel`, `HRConnectSheet` — SwiftUI display/connection components
