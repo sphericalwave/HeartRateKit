@@ -145,6 +145,17 @@ public final class HeartRateMonitor: ObservableObject {
         }
     }
 
+    /// Whether there's a watch app to stream from at all — lets a host say
+    /// "waiting for the watch" or "nothing to wait for" rather than leaving a
+    /// spinner up forever.
+    public var isWatchAppAvailable: Bool {
+        #if os(iOS)
+        watch.isWatchAppAvailable
+        #else
+        false
+        #endif
+    }
+
     /// Forwarding density for the watch source. No-op for a strap, which
     /// sends every reading it takes.
     public func setWatchResolution(_ resolution: HRResolution) {
