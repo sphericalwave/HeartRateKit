@@ -42,6 +42,25 @@ public struct HRThrottle {
     }
 }
 
+/// Encodes/decodes the `[String: Any]` applicationContext the phone pushes to
+/// tell the watch whether to stream, and how densely. Shared so the two sides
+/// can't drift on key names.
+public enum WatchHRContext {
+    public static let streamingKey = "streaming"
+    public static let resolutionKey = "resolution"
+
+    public static func encode(streaming: Bool, resolution: HRResolution) -> [String: Any] {
+        [streamingKey: streaming, resolutionKey: resolution.rawValue]
+    }
+
+    /// Nil when the payload carries no streaming flag — i.e. it isn't ours.
+    public static func decode(_ dict: [String: Any]) -> (streaming: Bool, resolution: HRResolution)? {
+        guard let streaming = dict[streamingKey] as? Bool else { return nil }
+        let resolution = (dict[resolutionKey] as? String).flatMap(HRResolution.init(rawValue:)) ?? .high
+        return (streaming, resolution)
+    }
+}
+
 /// Encodes/decodes the `[String: Any]` WatchConnectivity payload for one HR reading.
 public enum WatchHRMessage {
     public static let bpmKey = "bpm"

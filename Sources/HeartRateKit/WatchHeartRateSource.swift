@@ -44,11 +44,9 @@ public final class WatchHeartRateSource: NSObject, HeartRateSource, WCSessionDel
 
     private func pushContext(streaming: Bool) {
         guard WCSession.isSupported() else { return }
-        let ctx: [String: Any] = [
-            "streaming": streaming,
-            "resolution": resolution.rawValue,
-        ]
-        try? WCSession.default.updateApplicationContext(ctx)
+        try? WCSession.default.updateApplicationContext(
+            WatchHRContext.encode(streaming: streaming, resolution: resolution)
+        )
     }
 
     private func ingest(_ message: [String: Any]) {
