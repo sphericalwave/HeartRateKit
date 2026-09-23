@@ -27,6 +27,12 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
     private var workoutSession: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
     private var throttle = HRThrottle(resolution: .high)
+    private var autoStop: Task<Void, Never>?
+
+    /// A session left running all day is charged to the wearer's Activity
+    /// rings the whole time, so streaming stops on its own after this. The
+    /// host can raise it, but not to "forever".
+    public var maxDuration: TimeInterval = 60 * 60
 
     public override init() { super.init() }
 
@@ -63,7 +69,14 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
         do {
             let session = try HKWorkoutSession(healthStore: store, configuration: config)
             let builder = session.associatedWorkoutBuilder()
-            builder.dataSource = HKLiveWorkoutDataSource(healthStore: store, workoutConfiguration: config)
+            let dataSource = HKLiveWorkoutDataSource(healthStore: store, workoutConfiguration: config)
+            // Heart rate is all this is for. The default collection set also
+            // gathers energy and distance, which then rode along into Health
+            // as if the wearer had worked out for as long as the app was open.
+            dataSource.disableCollection(for: HKQuantityType(.activeEnergyBurned))
+            dataSource.disableCollection(for: HKQuantityType(.basalEnergyBurned))
+            dataSource.disableCollection(for: HKQuantityType(.distanceWalkingRunning))
+            builder.dataSource = dataSource
             builder.delegate = self
             self.workoutSession = session
             self.builder = builder
@@ -72,6 +85,7 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
             builder.beginCollection(withStart: now) { _, _ in }
             isStreaming = true
             lastError = nil
+            startAutoStop()
         } catch {
             lastError = "Workout start failed: \(error.localizedDescription)"
         }
@@ -80,11 +94,28 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
     public func stop() {
         guard isStreaming else { return }
         isStreaming = false
+        autoStop?.cancel()
+        autoStop = nil
         workoutSession?.end()
-        builder?.endCollection(withEnd: Date()) { [weak self] _, _ in
-            self?.builder?.finishWorkout { _, _ in }
-        }
+        // Discarded, never finished: this is a heart-rate feed, not a workout
+        // the wearer asked to record. finishWorkout() wrote one to Health with
+        // every sample the session had collected.
+        builder?.discardWorkout()
+        builder = nil
         workoutSession = nil
+    }
+
+    private func startAutoStop() {
+        autoStop?.cancel()
+        let limit = maxDuration
+        autoStop = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(limit * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            await MainActor.run {
+                self.lastError = "Stopped after \(Int(limit / 60)) min"
+                self.stop()
+            }
+        }
     }
 
     private func forward(bpm: Int) {
