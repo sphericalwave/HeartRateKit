@@ -28,6 +28,8 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
     private var builder: HKLiveWorkoutBuilder?
     private var throttle = HRThrottle(resolution: .high)
     private var autoStop: Task<Void, Never>?
+    private var hrQuery: HKAnchoredObjectQuery?
+    private var sawSample = false
 
     /// A session left running all day is charged to the wearer's Activity
     /// rings the whole time, so streaming stops on its own after this. The
@@ -85,7 +87,10 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
             builder.beginCollection(withStart: now) { _, _ in }
             isStreaming = true
             lastError = nil
+            sawSample = false
+            startHeartRateQuery()
             startAutoStop()
+            startSilenceWatchdog()
         } catch {
             lastError = "Workout start failed: \(error.localizedDescription)"
         }
@@ -96,6 +101,10 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
         isStreaming = false
         autoStop?.cancel()
         autoStop = nil
+        if let hrQuery {
+            store.stop(hrQuery)
+            self.hrQuery = nil
+        }
         workoutSession?.end()
         // Discarded, never finished: this is a heart-rate feed, not a workout
         // the wearer asked to record. finishWorkout() wrote one to Health with
@@ -103,6 +112,51 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
         builder?.discardWorkout()
         builder = nil
         workoutSession = nil
+    }
+
+    /// Reads heart rate straight from HealthKit rather than waiting for the
+    /// workout builder to hand it over. The builder reports nothing at all
+    /// when it has nothing — no error, no samples — which is indistinguishable
+    /// from a watch that isn't being worn. A query says which.
+    private func startHeartRateQuery() {
+        let type = HKQuantityType(.heartRate)
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        // Only samples taken from now on; older ones would replay a stale bpm.
+        let predicate = HKQuery.predicateForSamples(withStart: Date(), end: nil, options: .strictStartDate)
+        let handler: (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { [weak self] _, samples, _, _, error in
+            guard let self else { return }
+            if let error {
+                Task { @MainActor in self.lastError = "Heart rate unavailable: \(error.localizedDescription)" }
+                return
+            }
+            guard let sample = (samples as? [HKQuantitySample])?.last else { return }
+            let bpm = Int(sample.quantity.doubleValue(for: unit).rounded())
+            Task { @MainActor in
+                self.sawSample = true
+                self.forward(bpm: bpm)
+            }
+        }
+        let query = HKAnchoredObjectQuery(type: type,
+                                          predicate: predicate,
+                                          anchor: nil,
+                                          limit: HKObjectQueryNoLimit,
+                                          resultsHandler: handler)
+        query.updateHandler = handler
+        store.execute(query)
+        hrQuery = query
+    }
+
+    /// A workout session that yields nothing for half a minute means the watch
+    /// isn't on a wrist, or heart-rate access was refused — say so instead of
+    /// showing "Streaming" against an empty reading.
+    private func startSilenceWatchdog() {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard let self, self.isStreaming, !self.sawSample else { return }
+            await MainActor.run {
+                self.lastError = "No readings — wear the watch, and allow heart rate in Health"
+            }
+        }
     }
 
     private func startAutoStop() {
@@ -131,16 +185,11 @@ public final class WatchHRStreamer: NSObject, ObservableObject {
     }
 }
 
+// The session exists to make the watch sample heart rate densely and to keep
+// the app alive while it does; the readings themselves come from the query.
 extension WatchHRStreamer: HKLiveWorkoutBuilderDelegate {
     public func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder,
-                               didCollectDataOf collectedTypes: Set<HKSampleType>) {
-        let hrType = HKQuantityType(.heartRate)
-        guard collectedTypes.contains(hrType),
-              let stats = workoutBuilder.statistics(for: hrType),
-              let q = stats.mostRecentQuantity() else { return }
-        let unit = HKUnit.count().unitDivided(by: .minute())
-        forward(bpm: Int(q.doubleValue(for: unit).rounded()))
-    }
+                               didCollectDataOf collectedTypes: Set<HKSampleType>) {}
 
     public func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
 }
