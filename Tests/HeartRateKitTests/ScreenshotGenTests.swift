@@ -15,6 +15,8 @@ final class ScreenshotGenTests: XCTestCase {
         [
             ("CompactHRChart", CGSize(width: 340, height: 120),
              AnyView(CompactHRChart(recent: HeartRateKitSamples.recent).padding())),
+            ("HeartRateBadge", CGSize(width: 200, height: 200),
+             AnyView(HeartRateBadge(bpm: 72).padding())),
             ("HRConnectSheet", CGSize(width: 390, height: 600),
              AnyView(HRConnectSheet(monitor: .preview()))),
             ("HRPill", CGSize(width: 180, height: 64),
