@@ -11,6 +11,44 @@ import CoreBluetooth
 
 /// Compact toolbar readout: signal dot, heart, live BPM. Tap to open the
 /// connect sheet; long-press to disconnect when a strap is attached.
+/// The reading set inside a filled heart, with a lowercase "bpm" beneath it.
+/// Scales as one piece from `size`, so the same badge works as a watch's whole
+/// screen or as a readout beside a phone's practice controls.
+public struct HeartRateBadge: View {
+
+    private let bpm: Int?
+    private let size: CGFloat
+
+    public init(bpm: Int?, size: CGFloat = 130) {
+        self.bpm = bpm
+        self.size = size
+    }
+
+    public var body: some View {
+        ZStack {
+            Image(systemName: "heart.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.pink)
+                .frame(width: size, height: size)
+            VStack(spacing: -size * 0.02) {
+                Text(bpm.map { "\($0)" } ?? "—")
+                    .font(.system(size: size * 0.31, weight: .bold, design: .rounded).monospacedDigit())
+                    .contentTransition(.numericText())
+                Text("bpm")
+                    .font(.system(size: size * 0.11, weight: .medium))
+            }
+            .foregroundStyle(.white)
+            // The lobes eat the top of the frame, so the reading sits low of
+            // centre to land in the body of the shape.
+            .offset(y: size * 0.06)
+        }
+        .animation(.default, value: bpm)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(bpm.map { "\($0) beats per minute" } ?? "No heart rate")
+    }
+}
+
 public struct HRPill: View {
     @ObservedObject private var monitor: HeartRateMonitor
     @State private var showSheet = false
