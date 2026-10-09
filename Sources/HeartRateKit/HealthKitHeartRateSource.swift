@@ -23,7 +23,7 @@ public final class HealthKitHeartRateSource: HeartRateSource {
         self.continuation = localCont
     }
 
-    public func start() async throws {
+    public nonisolated(nonsending) func start() async throws {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let hrType = HKQuantityType(.heartRate)
         try await store.requestAuthorization(toShare: [], read: [hrType])
