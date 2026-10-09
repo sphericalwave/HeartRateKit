@@ -51,7 +51,7 @@ public final class WatchHeartRateSource: NSObject, HeartRateSource, WCSessionDel
         self.continuation = cont
     }
 
-    public func start() async throws {
+    public nonisolated(nonsending) func start() async throws {
         guard WCSession.isSupported() else { return }
         wantsStreaming = true
         let s = WCSession.default

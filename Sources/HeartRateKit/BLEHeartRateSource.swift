@@ -66,7 +66,7 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
         self.central = CBCentralManager(delegate: self, queue: .main)
     }
 
-    public func start() async throws {
+    public nonisolated(nonsending) func start() async throws {
         wantsConnection = true
         attemptStart()
     }

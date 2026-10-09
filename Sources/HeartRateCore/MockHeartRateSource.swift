@@ -38,7 +38,7 @@ public final class MockHeartRateSource: HeartRateSource {
         self.continuation = localCont
     }
 
-    public func start() async throws {
+    public nonisolated(nonsending) func start() async throws {
         let start = clock()
         task = Task { [profile, interval, continuation, clock] in
             while !Task.isCancelled {

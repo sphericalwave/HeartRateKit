@@ -9,7 +9,7 @@ private final class StubSource: HeartRateSource {
         samples = AsyncStream { c = $0 }
         continuation = c
     }
-    func start() async throws {}
+    nonisolated(nonsending) func start() async throws {}
     func stop() { continuation.finish() }
     func emit(_ bpm: Int) { continuation.yield(bpm) }
 }

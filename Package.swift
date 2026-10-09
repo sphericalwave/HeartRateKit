@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -13,5 +13,9 @@ let package = Package(
         .testTarget(name: "HeartRateCoreTests", dependencies: ["HeartRateCore"]),
         .target(name: "HeartRateKit", dependencies: ["HeartRateCore"]),
         .testTarget(name: "HeartRateKitTests", dependencies: ["HeartRateKit"]),
-    ]
+        // Swift 6 mode: compile-checks that @MainActor owners can start a source.
+        .testTarget(name: "HeartRateConcurrencyTests", dependencies: ["HeartRateKit"],
+                    swiftSettings: [.swiftLanguageMode(.v6)]),
+    ],
+    swiftLanguageModes: [.v5]
 )

@@ -10,6 +10,9 @@ import Foundation
 
 public protocol HeartRateSource: AnyObject {
     var samples: AsyncStream<Int> { get }
-    func start() async throws
+    /// Runs on the caller's actor rather than the global executor, so an
+    /// `@MainActor` owner can start a source it also reads without sending
+    /// it across isolation domains (BLE drives a main-queue central).
+    nonisolated(nonsending) func start() async throws
     func stop()
 }

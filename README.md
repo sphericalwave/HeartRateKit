@@ -11,6 +11,7 @@ observable facade, plus ready-made SwiftUI display components.
 | `CompactHRChart` | ![CompactHRChart](Docs/img/compact-hr-chart.png) |
 | `HRConnectSheet` | ![HRConnectSheet](Docs/img/hr-connect-sheet.png) |
 | `HRPill` | ![HRPill](Docs/img/hr-pill.png) |
+| `HeartRateBadge` | ![HeartRateBadge](Docs/img/heart-rate-badge.png) |
 | `LiveBPMLabel` | ![LiveBPMLabel](Docs/img/live-bpm-label.png) |
 <!-- SCREENSHOTS:END -->
 
