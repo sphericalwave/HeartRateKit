@@ -6,6 +6,12 @@
 //  Remembers the preferred strap and auto-reconnects. From the
 //  bounce/breathe lineage (byte-identical there).
 //
+//  Opt-in state restoration: with a `restoreIdentifier` (and the host's
+//  `bluetooth-central` background mode), iOS keeps the strap connection
+//  alive after the app is killed in the background and relaunches the app
+//  when the strap next sends a reading. The host must create the source with
+//  the same identifier early in every launch to receive it.
+//
 
 import Foundation
 import CoreBluetooth
@@ -42,6 +48,9 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
     private var wantsConnection = false
     private var wantsScan = false
     private var connectingPeripheral: CBPeripheral?
+    /// Set by state restoration until the central powers on and the
+    /// restored strap can be resumed.
+    private var needsRestoreResume = false
 
     private var preferredPeripheralID: UUID? {
         get {
@@ -55,7 +64,10 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
     /// than connecting to whichever strap it hears first.
     public var hasRememberedDevice: Bool { preferredPeripheralID != nil }
 
-    public override init() {
+    /// - Parameter restoreIdentifier: opts into Core Bluetooth state
+    ///   restoration. Use one fixed string per app, and create the source
+    ///   at launch; nil (the default) keeps the old non-restoring behavior.
+    public init(restoreIdentifier: String? = nil) {
         var localCont: AsyncStream<Int>.Continuation!
         self.samples = AsyncStream { localCont = $0 }
         var localDetailedCont: AsyncStream<HeartRateSample>.Continuation!
@@ -63,7 +75,24 @@ public final class BLEHeartRateSource: NSObject, DetailedHeartRateSource, Observ
         super.init()
         self.continuation = localCont
         self.detailedContinuation = localDetailedCont
-        self.central = CBCentralManager(delegate: self, queue: .main)
+        self.central = CBCentralManager(delegate: self, queue: .main,
+                                        options: Self.centralOptions(restoreIdentifier: restoreIdentifier))
+    }
+
+    /// Internal for tests.
+    static func centralOptions(restoreIdentifier: String?) -> [String: Any]? {
+        #if os(macOS)
+        return nil
+        #else
+        guard let restoreIdentifier else { return nil }
+        return [CBCentralManagerOptionRestoreIdentifierKey: restoreIdentifier]
+        #endif
+    }
+
+    /// Of the peripherals iOS restored, the remembered strap, else the first.
+    /// Generic so tests needn't construct a `CBPeripheral`. Internal for tests.
+    static func pickRestored<P>(_ candidates: [P], id: (P) -> UUID, preferred: UUID?) -> P? {
+        candidates.first { id($0) == preferred } ?? candidates.first
     }
 
     public nonisolated(nonsending) func start() async throws {
@@ -145,7 +174,40 @@ extension BLEHeartRateSource: CBCentralManagerDelegate {
         state = central.state
         if central.state == .poweredOn {
             if wantsScan && !wantsConnection { scan() }
+            resumeRestoredPeripheral()
             attemptStart()
+        }
+    }
+
+    #if !os(macOS)
+    /// Called before `centralManagerDidUpdateState` on a launch that restores
+    /// state. Only records what came back: peripherals can't be commanded
+    /// until the central is powered on.
+    public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        let restored = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? []
+        guard let peripheral = Self.pickRestored(restored, id: \.identifier, preferred: preferredPeripheralID) else { return }
+        peripheral.delegate = self
+        wantsConnection = true
+        needsRestoreResume = true
+        if preferredPeripheralID == nil { preferredPeripheralID = peripheral.identifier }
+        if peripheral.state == .connected {
+            connected = peripheral
+        } else {
+            connectingPeripheral = peripheral
+        }
+    }
+    #endif
+
+    /// Re-subscribes a strap that was still connected when the app was
+    /// relaunched, and re-issues a connect the system dropped while it was
+    /// down. A pending connect is left alone: it completes on its own.
+    private func resumeRestoredPeripheral() {
+        guard needsRestoreResume else { return }
+        needsRestoreResume = false
+        if let peripheral = connected, peripheral.state == .connected {
+            peripheral.discoverServices([heartRateServiceUUID])
+        } else if let peripheral = connectingPeripheral, peripheral.state == .disconnected {
+            central.connect(peripheral, options: nil)
         }
     }
 
