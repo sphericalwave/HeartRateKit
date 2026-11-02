@@ -25,6 +25,15 @@ public final class HeartRateMonitor: ObservableObject {
     /// Rolling 60s window, shaped for `CompactHRChart(recent:)`.
     @Published public private(set) var recent: [(t: Date, bpm: Int)] = []
 
+    /// Beat-to-beat (RR) intervals in seconds, stamped when they arrived,
+    /// oldest first, over a rolling `rrWindow`. Only a chest strap reports
+    /// them; the list stays empty while the watch is the source. Feed it to
+    /// `HRV.rmssd(_:)` for live variability.
+    @Published public private(set) var recentRR: [(t: Date, rr: Double)] = []
+
+    /// How much RR history `recentRR` keeps.
+    public static let rrWindow: TimeInterval = 5 * 60
+
     /// Which source is feeding `bpm`. Change it with `use(_:)`.
     @Published public private(set) var sourceKind: SourceKind = .ble
 
@@ -79,6 +88,16 @@ public final class HeartRateMonitor: ObservableObject {
     public init() {
         recorder.attach(ble)
 
+        // The strap's decoded measurements carry RR intervals that `samples`
+        // (bpm only) drops. Nothing else consumes `detailedSamples`.
+        // Ends with the source's stream; holds the monitor only weakly.
+        Task { [weak self, ble] in
+            for await sample in ble.detailedSamples {
+                guard let self else { return }
+                self.ingestRR(sample.rrIntervals, at: sample.timestamp)
+            }
+        }
+
         recorder.$latestBpm.sink { [weak self] in
             guard let self else { return }
             bpm = $0
@@ -117,6 +136,17 @@ public final class HeartRateMonitor: ObservableObject {
         }.store(in: &cancellables)
     }
 
+    /// Appends one measurement's RR intervals and trims the window. Internal
+    /// for tests.
+    func ingestRR(_ intervals: [Double], at time: Date) {
+        guard sourceKind == .ble, !intervals.isEmpty else { return }
+        recentRR.append(contentsOf: intervals.map { (t: time, rr: $0) })
+        let cutoff = time.addingTimeInterval(-Self.rrWindow)
+        if let first = recentRR.first, first.t < cutoff {
+            recentRR.removeAll { $0.t < cutoff }
+        }
+    }
+
     // MARK: - Source
 
     /// Switches which source feeds the monitor. The old one is stopped, so a
@@ -126,6 +156,7 @@ public final class HeartRateMonitor: ObservableObject {
         stopCurrentSource()
         sourceKind = kind
         bpm = nil
+        recentRR = []
         recorder.detach()
 
         switch kind {

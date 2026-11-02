@@ -81,3 +81,18 @@ final class HRRecorderTests: XCTestCase {
         recorder.detach()
     }
 }
+
+final class HeartRateMonitorRRTests: XCTestCase {
+
+    @MainActor
+    func testRRAccumulatesAndTrimsToWindow() {
+        let monitor = HeartRateMonitor()
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        monitor.ingestRR([0.8, 0.85], at: t0)
+        monitor.ingestRR([], at: t0.addingTimeInterval(1))
+        XCTAssertEqual(monitor.recentRR.map(\.rr), [0.8, 0.85])
+
+        monitor.ingestRR([0.9], at: t0.addingTimeInterval(HeartRateMonitor.rrWindow + 1))
+        XCTAssertEqual(monitor.recentRR.map(\.rr), [0.9])
+    }
+}
